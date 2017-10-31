@@ -1,0 +1,197 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `brfss2013`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+
+* * *
+
+## Part 1: Data
+The Behavioral Risk Factor Surveillance System (BRFSS) is the nation's premier system of health-related telephone surveys that collect state data about U.S. residents regarding their health-related risk behaviors, chronic health conditions, and use of preventive services. Established in 1984 with 15 states, BRFSS now collects data in all 50 states as well as the District of Columbia and three U.S. territories. BRFSS completes more than 400,000 adult interviews each year, making it the largest continuously conducted health survey system in the world.
+
+BRFSS data is collected through telephone survey.Telephone number is chosen randomly. A staff will cold call the nmber and ask about health and health practices. As random sampling is used, the data has good generabizability.
+
+However, there are some reservations. A lot of people will refuse telephone surveys for they are busy. Considering there are 30 modules in total in the survey, this is highly likely. In addition, homeless and extremly poor people who do not have a phone are not covered in the survey, who definately have a different health condition.
+
+In addtion, all data here is self-reported, and could be subject to all kinds of bias. It is not clear what impact it will have on the generabizability.
+
+In addition, as the data collected are all observations and reported by the participants, one should be very caucious when drawing conclusions from the data. Causality is not garanteed in oberservational data.
+
+* * *
+
+## Part 2: Research questions
+Coke and other sweeten drinks has long been believed to cause various health problems, most notablely obesity. Every one of us can come up with some examples of obese people who love their soda. But at the same time, soda is widely consumed by the majority of population, many of who do not experience the syptom. Here, we will look into BRFSS data to see if there is a link.
+
+**Research quesion 1:**
+Do soda/sweeten drinks lead to obesity?
+
+**Research quesion 2:**
+Do soda/sweeten drinks lead to heart attack?
+
+**Research quesion 3:**
+Do soda/sweeten drinks lead to diabetes?
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+## Data Cleaning
+Drink consumption data is very complex, for example:
+```{r}
+table(brfss2013$ssbfrut2)
+```
+Here is what the lables are about:
+
+**ssbfrut2**: How Often Did You Drink Sugar-Sweetened Drinks?
+
+Value	        Value Label	
+
+[101 - 199]	  Times per day
+
+[201 - 299]	  Times per week
+
+[301 - 399]	  Times per month
+
+0             Never
+
+NA            Refused/Missing
+
+Therefore, we need to clean data before use:
+```{r}
+brfss2013$juice <- ifelse(
+  brfss2013$ssbfrut2 == 0,
+  0,
+  ifelse(
+    brfss2013$ssbfrut2 <200,
+    (brfss2013$ssbfrut2-100)*30,
+    ifelse(
+      brfss2013$ssbfrut2 <300,
+      (brfss2013$ssbfrut2-200)*4,
+      brfss2013$ssbfrut2-300
+    )
+  )
+)
+temp = brfss2013%>%filter(brfss2013$juice <= 30 & brfss2013$juice >0)
+hist(temp$juice)
+```
+
+From the above chart, we understand that the data is not quite right, where juice intake before 30 looks like a typical distribution, number 30 is quite strange. This is cuased by the fact that we time [301-399] label by 30, so for all 301 label we get 30 cups/month. You can observe similar trans in 4, 8, 12, etc. due to the treatment of times per week. At this point we realize this label system is a very bad way of collecting data and decide we are only using times per day data for this analysis. 
+
+We therefore reclean the data, and it looks much better:
+
+```{r}
+brfss2013$juice <- ifelse(brfss2013$ssbfrut2 > 100 & brfss2013$ssbfrut2 < 200,
+                          brfss2013$ssbfrut2-100,
+                          NA) 
+hist((brfss2013%>%filter(juice<30))$juice, breaks = 30)
+```
+```{r}
+# We do the same thing for sugar, i.e. soda data
+brfss2013$soda <- ifelse(brfss2013$ssbsugar > 100 & brfss2013$ssbsugar < 200,
+                          brfss2013$ssbsugar-100,
+                          NA) 
+hist((brfss2013%>%filter(soda<30))$soda, breaks = 30)
+```
+
+In addition, we will also look at people who drink soda, vs. people who don't.
+
+```{r}
+brfss2013$drinksoda <- ifelse(brfss2013$ssbsugar > 0,1,ifelse(brfss2013$ssbsugar==0,0,NA)) 
+table(brfss2013$drinksoda)
+```
+
+```{r}
+brfss2013$drinkjuice <- ifelse(brfss2013$ssbfrut2 > 0,1,ifelse(brfss2013$ssbfrut2==0,0,NA)) 
+table(brfss2013$drinkjuice)
+```
+
+
+**Research quesion 1:**
+before we start, we calclate bmi
+```{r}
+brfss2013$weight2 <- as.numeric(brfss2013$weight2)
+brfss2013$bmi <- 703*brfss2013$weight2/(brfss2013$htin4**2)
+summary(brfss2013$htin4)
+```
+We also want to take a look of all parameters in question:
+```{r}
+summary(brfss2013%>%select(juice, soda, drinksoda, drinkjuice, bmi))
+```
+
+As indicated below, if you drink juice on daily basis, driking juice has little relationship with your weight.
+
+```{r}
+
+temp <- brfss2013%>%filter(juice<10)
+boxplot(temp$bmi~temp$juice)
+
+```
+
+The same thing ca be said to soda:
+```{r}
+
+temp <- brfss2013%>%filter(soda<10)
+boxplot(temp$bmi~temp$soda)
+```
+
+However, when we compare people who drink soda with people who don't, there is certainly a difference. Here we can conclude that the self-reported consumption of soda/juice intake is not accurate and therefore not a good predicter on bmi. However, choose not to drink soda/juice can certainly be beneficial and is related to lower bmi.
+
+```{r}
+boxplot(brfss2013$bmi~brfss2013$drinksoda, ylim=c(0,30))
+```
+```{r}
+boxplot(brfss2013$bmi~brfss2013$drinkjuice, ylim=c(0,30))
+```
+
+**Research quesion 2:**
+We  want to take a look of all parameters in question:
+```{r}
+summary(brfss2013%>%select(juice, soda, drinksoda, drinkjuice, cvdinfr4))
+```
+We do the same with heart attack and find drinking juice certainly contributes to higher rate of heart attach.
+```{r}
+mosaicplot(brfss2013$cvdinfr4~brfss2013$drinkjuice, ylim=c(0,30))
+```
+```{r}
+mosaicplot(brfss2013$cvdinfr4~brfss2013$drinksoda, ylim=c(0,30))
+```
+
+
+
+**Research quesion 3:**
+```{r}
+summary(brfss2013%>%select(juice, soda, drinksoda, drinkjuice, diabete3))
+```
+
+We do the same with heart attack and find drinking juice certainly contributes to higher rate of diabetes. It is worth noting that even when people have diabites (the question asked here is: "You Have Diabetes?"), as represented in the case, they sill drink more coda and juice than people who do not. 
+```{r}
+mosaicplot(brfss2013$diabete3~brfss2013$drinkjuice, ylim=c(0,30))
+```
+```{r}
+mosaicplot(brfss2013$diabete3~brfss2013$drinkso, ylim=c(0,30))
+```
+
